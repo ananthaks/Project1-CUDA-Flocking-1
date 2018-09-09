@@ -3,6 +3,9 @@
 #include <cuda.h>
 #include <cmath>
 #include <glm/glm.hpp>
+
+#include <glm/gtx/norm.hpp>
+
 #include "utilityCore.hpp"
 #include "kernel.h"
 
@@ -236,6 +239,9 @@ __device__ glm::vec3 computeVelocityChange(int N, int iSelf, const glm::vec3 *po
 
 	const glm::vec3 selBoidPos = pos[iSelf];
 
+	int count1 = 0;
+	int count3 = 0;
+
 	for(int i = 0; i < N; ++i)
 	{
 		if(i == iSelf)
@@ -250,6 +256,7 @@ __device__ glm::vec3 computeVelocityChange(int N, int iSelf, const glm::vec3 *po
 		if(distanceToBoid < rule1Distance)
 		{
 			rule1Velocity += currBoidPos;
+			count1++;
 		}
 
 		if(distanceToBoid < rule2Distance)
@@ -260,16 +267,24 @@ __device__ glm::vec3 computeVelocityChange(int N, int iSelf, const glm::vec3 *po
 		if(distanceToBoid < rule3Distance)
 		{
 			rule3Velocity += currBoidVel;
+			count3++;
 		}
 	}
 
-	rule1Velocity /= (N - 1);
-	rule1Velocity = (rule1Velocity - selBoidPos) * rule1Scale;
+	if(count1 > 0)
+	{
+		rule1Velocity /= float(count1);
+		rule1Velocity = (rule1Velocity - selBoidPos) * rule1Scale;
+	}
 
 	rule2Velocity *= rule2Scale;
 
-	rule3Velocity /= (N - 1);
-	rule3Velocity *= rule3Scale;
+	if(count3 > 0)
+	{
+		rule3Velocity /= float(count3);
+		rule3Velocity *= rule3Scale;
+	}
+	
 	
 	return (rule1Velocity + rule2Velocity + rule3Velocity);
 }
@@ -290,7 +305,7 @@ __global__ void kernUpdateVelocityBruteForce(int N, glm::vec3 *pos,
 	{
 		return;
 	}
-	glm::vec3 newVelocity = computeVelocityChange(N, index, pos, vel1);
+	glm::vec3 newVelocity = vel1[index] + computeVelocityChange(N, index, pos, vel1);
 
 	float speed = glm::length(newVelocity);
 	if (speed > maxSpeed) {
@@ -299,6 +314,7 @@ __global__ void kernUpdateVelocityBruteForce(int N, glm::vec3 *pos,
 
 	vel2[index] = newVelocity;
 }
+
 /**
 * LOOK-1.2 Since this is pretty trivial, we implemented it for you.
 * For each of the `N` bodies, update its position based on its current velocity.
@@ -406,14 +422,13 @@ void Boids::stepSimulationNaive(float dt) {
 	// 1. Calculate new Velocities
 	kernUpdateVelocityBruteForce << < fullBlocksPerGrid, blockSize >> > (numObjects, dev_pos, dev_vel1, dev_vel2);
 
-	// 2. Update the new positions 
-	kernUpdatePos << < fullBlocksPerGrid, blockSize >> > (numObjects, dt, dev_pos, dev_vel2);
-
-  // TODO-1.2 ping-pong the velocity buffers
-
+	// 2. Interchange the buffers
 	glm::vec3* temp = dev_vel1;
 	dev_vel1 = dev_vel2;
 	dev_vel2 = temp;
+
+	// 3. Update the new positions 
+	kernUpdatePos << < fullBlocksPerGrid, blockSize >> > (numObjects, dt, dev_pos, dev_vel1);
 }
 
 void Boids::stepSimulationScatteredGrid(float dt) {
