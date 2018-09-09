@@ -4,8 +4,6 @@
 #include <cmath>
 #include <glm/glm.hpp>
 
-#include <glm/gtx/norm.hpp>
-
 #include "utilityCore.hpp"
 #include "kernel.h"
 
@@ -335,6 +333,7 @@ __global__ void kernUpdateVelocityBruteForce(int N, glm::vec3 *pos,
 	}
 	glm::vec3 newVelocity = vel1[index] + computeVelocityChange(N, index, pos, vel1);
 
+	// Clamp the velocity
 	float speed = glm::length(newVelocity);
 	if (speed > maxSpeed) {
 		newVelocity = glm::normalize(newVelocity) * maxSpeed;
@@ -394,6 +393,7 @@ __global__ void kernComputeIndices(int N, int gridResolution,
 	}
 	indices[currIndex] = currIndex;
 
+	// Grid Index
 	glm::vec3 gridIndex = glm::floor((pos[currIndex] - gridMin) * inverseCellWidth);
 	gridIndices[currIndex] = gridIndex3Dto1D(gridIndex.x, gridIndex.y, gridIndex.z, gridResolution);
 }
